@@ -18,15 +18,13 @@ from CommonClient import CommonContext, server_loop, gui_enabled, console_loop, 
 
 from worlds.tloz.Items import item_game_ids
 from worlds.tloz.Locations import location_ids
-from worlds.tloz import Items, Locations, Rom
-
-from settings import get_settings
+from worlds.tloz import Items, Locations, Rom, TLoZWorld
 
 SYSTEM_MESSAGE_ID = 0
 
-CONNECTION_TIMING_OUT_STATUS = "Connection timing out. Please restart your emulator, then restart connector_tloz.lua"
-CONNECTION_REFUSED_STATUS = "Connection Refused. Please start your emulator and make sure connector_tloz.lua is running"
-CONNECTION_RESET_STATUS = "Connection was reset. Please restart your emulator, then restart connector_tloz.lua"
+CONNECTION_TIMING_OUT_STATUS = "Connection timing out. Please restart your emulator, then restart {}"
+CONNECTION_REFUSED_STATUS = "Connection Refused. Please start your emulator and make sure {} is running"
+CONNECTION_RESET_STATUS = "Connection was reset. Please restart your emulator, then restart {}"
 CONNECTION_TENTATIVE_STATUS = "Initial Connection Made"
 CONNECTION_CONNECTED_STATUS = "Connected"
 CONNECTION_INITIAL_STATUS = "Connection has not been initiated"
@@ -60,7 +58,14 @@ class ZeldaContext(CommonContext):
     overworld_item = 0x5F
     armos_item = 0x24
 
-    def __init__(self, server_address, password):
+    def __init__(self, server_address, password, *, alt: bool = False):
+        if alt:
+            from worlds.tloz_alt import TLoZWorld as world_type
+        else:
+            world_type = TLoZWorld
+        self.world_type = world_type
+        self.game = world_type.game
+        self.connector_script = "connector_tloz_alt.lua" if alt else "connector_tloz.lua"
         super().__init__(server_address, password)
         self.bonus_items = []
         self.nes_streams: (StreamReader, StreamWriter) = None
@@ -68,7 +73,6 @@ class ZeldaContext(CommonContext):
         self.messages = {}
         self.locations_array = None
         self.nes_status = CONNECTION_INITIAL_STATUS
-        self.game = 'The Legend of Zelda'
         self.awaiting_rom = False
         self.shop_slots_left = 0
         self.shop_slots_middle = 0
@@ -129,7 +133,7 @@ class ZeldaContext(CommonContext):
             logging_pairs = [
                 ("Client", "Archipelago")
             ]
-            base_title = "Archipelago Zelda 1 Client"
+            base_title = "Archipelago Zelda 1 Client" + (" (Alt)" if self.world_type is not TLoZWorld else "")
 
         self.ui = ZeldaManager(self)
         self.ui_task = asyncio.create_task(self.ui.async_run(), name="UI")
@@ -296,22 +300,22 @@ async def nes_sync_task(ctx: ZeldaContext):
                     reconcile_shops(ctx)
                 except asyncio.TimeoutError:
                     logger.debug("Read Timed Out, Reconnecting")
-                    error_status = CONNECTION_TIMING_OUT_STATUS
+                    error_status = CONNECTION_TIMING_OUT_STATUS.format(ctx.connector_script)
                     writer.close()
                     ctx.nes_streams = None
                 except ConnectionResetError as e:
                     logger.debug("Read failed due to Connection Lost, Reconnecting")
-                    error_status = CONNECTION_RESET_STATUS
+                    error_status = CONNECTION_RESET_STATUS.format(ctx.connector_script)
                     writer.close()
                     ctx.nes_streams = None
             except TimeoutError:
                 logger.debug("Connection Timed Out, Reconnecting")
-                error_status = CONNECTION_TIMING_OUT_STATUS
+                error_status = CONNECTION_TIMING_OUT_STATUS.format(ctx.connector_script)
                 writer.close()
                 ctx.nes_streams = None
             except ConnectionResetError:
                 logger.debug("Connection Lost, Reconnecting")
-                error_status = CONNECTION_RESET_STATUS
+                error_status = CONNECTION_RESET_STATUS.format(ctx.connector_script)
                 writer.close()
                 ctx.nes_streams = None
             if ctx.nes_status == CONNECTION_TENTATIVE_STATUS:
@@ -330,61 +334,61 @@ async def nes_sync_task(ctx: ZeldaContext):
                 ctx.nes_status = CONNECTION_TENTATIVE_STATUS
             except TimeoutError:
                 logger.debug("Connection Timed Out, Trying Again")
-                ctx.nes_status = CONNECTION_TIMING_OUT_STATUS
+                ctx.nes_status = CONNECTION_TIMING_OUT_STATUS.format(ctx.connector_script)
                 continue
             except ConnectionRefusedError:
                 logger.debug("Connection Refused, Trying Again")
-                ctx.nes_status = CONNECTION_REFUSED_STATUS
+                ctx.nes_status = CONNECTION_REFUSED_STATUS.format(ctx.connector_script)
                 await asyncio.sleep(1)
                 continue
+
+
+async def run_game(romfile: str, auto_start: typing.Union[bool, str]) -> None:
+    if auto_start is True:
+        import webbrowser
+        webbrowser.open(romfile)
+    elif isinstance(auto_start, str) and os.path.isfile(auto_start):
+        subprocess.Popen([auto_start, romfile],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+async def main(args):
+    global DISPLAY_MSGS
+    # A supplied patch determines the variant, including when opened from the alternate launcher entry.
+    alt = args.diff_file.lower().endswith(".aptlozalt") if args.diff_file else args.alt
+    ctx = ZeldaContext(args.connect, args.password, alt=alt)
+    game_settings = ctx.world_type.settings
+    DISPLAY_MSGS = game_settings.display_msgs
+    if args.diff_file:
+        import Patch
+        logging.info("Patch file was supplied. Creating nes rom..")
+        meta, romfile = Patch.create_rom_file(args.diff_file)
+        if "server" in meta:
+            ctx.server_address = meta["server"]
+        logging.info(f"Wrote rom file to {romfile}")
+        async_start(run_game(romfile, game_settings.rom_start))
+    ctx.server_task = asyncio.create_task(server_loop(ctx), name="ServerLoop")
+    if gui_enabled:
+        ctx.run_gui()
+    ctx.run_cli()
+    ctx.nes_sync_task = asyncio.create_task(nes_sync_task(ctx), name="NES Sync")
+
+    await ctx.exit_event.wait()
+    ctx.server_address = None
+
+    await ctx.shutdown()
+
+    if ctx.nes_sync_task:
+        await ctx.nes_sync_task
 
 
 if __name__ == '__main__':
     # Text Mode to use !hint and such with games that have no text entry
     Utils.init_logging("ZeldaClient")
-
-    DISPLAY_MSGS = get_settings()["tloz_options"]["display_msgs"]
-
-
-    async def run_game(romfile: str) -> None:
-        auto_start = typing.cast(typing.Union[bool, str],
-                                 get_settings()["tloz_options"].get("rom_start", True))
-        if auto_start is True:
-            import webbrowser
-            webbrowser.open(romfile)
-        elif isinstance(auto_start, str) and os.path.isfile(auto_start):
-            subprocess.Popen([auto_start, romfile],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-    async def main(args):
-        if args.diff_file:
-            import Patch
-            logging.info("Patch file was supplied. Creating nes rom..")
-            meta, romfile = Patch.create_rom_file(args.diff_file)
-            if "server" in meta:
-                args.connect = meta["server"]
-            logging.info(f"Wrote rom file to {romfile}")
-            async_start(run_game(romfile))
-        ctx = ZeldaContext(args.connect, args.password)
-        ctx.server_task = asyncio.create_task(server_loop(ctx), name="ServerLoop")
-        if gui_enabled:
-            ctx.run_gui()
-        ctx.run_cli()
-        ctx.nes_sync_task = asyncio.create_task(nes_sync_task(ctx), name="NES Sync")
-
-        await ctx.exit_event.wait()
-        ctx.server_address = None
-
-        await ctx.shutdown()
-
-        if ctx.nes_sync_task:
-            await ctx.nes_sync_task
-
-
     import colorama
 
     parser = get_base_parser()
+    parser.add_argument('--alt', action='store_true', help='Connect to The Legend of Zelda (Alt) without a patch file.')
     parser.add_argument('diff_file', default="", type=str, nargs="?",
                         help='Path to a Archipelago Binary Patch file')
     args = parser.parse_args()

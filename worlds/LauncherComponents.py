@@ -132,6 +132,10 @@ def launch_textclient(*args):
     launch(CommonClient.run_as_textclient, name="TextClient", args=args)
 
 
+def launch_tloz_alt(*args):
+    launch_exe([*get_exe("Zelda1Client"), "--alt", *args])
+
+
 def _install_apworld(apworld_src: str = "") -> Optional[tuple[pathlib.Path, pathlib.Path]]:
     if not apworld_src:
         apworld_src = open_filename('Select APWorld file to install', (('APWorld', ('.apworld',)),))
@@ -380,6 +384,8 @@ components: list[Component] = [
     Component('OoT Adjuster', 'OoTAdjuster'),
     # TLoZ
     Component('Zelda 1 Client', 'Zelda1Client', file_identifier=SuffixIdentifier('.aptloz')),
+    Component('Zelda 1 Client (Alt)', func=launch_tloz_alt, file_identifier=SuffixIdentifier('.aptlozalt'),
+              game_name='The Legend of Zelda (Alt)'),
     # ChecksFinder
     Component('ChecksFinder Client', 'ChecksFinderClient'),
     # Zillion
