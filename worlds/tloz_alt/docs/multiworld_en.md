@@ -70,6 +70,11 @@ files. Your patch file should have a `.aptlozalt` extension.
 Use **Open Patch** in the Archipelago Launcher. If you installed the Windows file association, you can also double-click
 the patch. The client creates your ROM in the same directory as the patch.
 
+If double-clicking opens the wrong client, use **Open with...** to associate `.aptlozalt` files with
+`ArchipelagoLauncher.exe` in your Archipelago installation folder. Older custom installers associated these files
+with `ArchipelagoZelda1Client.exe`, which bypasses the APWorld's client. Updating the APWorld alone does not change
+that Windows association.
+
 
 ## Running the Client Program and Connecting to the Server
 
@@ -162,7 +167,8 @@ To export scripts without opening the client UI:
 python Launcher.py "Zelda 1 Client (Alt)" -- --export-connector
 ```
 
-Application builds made from this updated source retain `ArchipelagoZelda1Client.exe --alt` and the `.aptlozalt`
-Windows association; they forward to the world-local client. Older custom executables need rebuilding to get that
-forwarding change. Installing the new APWorld alone is sufficient when using the Launcher's **Open Patch** or
+Application builds made from this updated source retain `ArchipelagoZelda1Client.exe --alt`, which forwards to the
+world-local client. The installer routes `.aptlozalt` files through `ArchipelagoLauncher.exe` so they use the client
+bundled in the installed APWorld. Older custom executables need rebuilding to get the `--alt` forwarding change.
+Installing the new APWorld alone is sufficient when using the Launcher's **Open Patch** or
 **Zelda 1 Client (Alt)** entry, including on stock installations.
