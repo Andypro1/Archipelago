@@ -94,26 +94,23 @@ class ZeldaContext(CommonContext):
                 self._set_message(msg, SYSTEM_MESSAGE_ID)
 
     def on_print_json(self, args: dict):
+        data = copy.deepcopy(args["data"])
+        if args.get("type") == "ItemSend":
+            wording = {" found their ": " found a ", " sent ": " sent a "}
+            for part in data:
+                if part.get("type", "text") == "text" and part.get("text") in wording:
+                    part["text"] = wording[part["text"]]
         if self.ui:
-            self.ui.print_json(copy.deepcopy(args["data"]))
+            self.ui.print_json(copy.deepcopy(data))
         else:
-            text = self.jsontotextparser(copy.deepcopy(args["data"]))
+            text = self.jsontotextparser(copy.deepcopy(data))
             logger.info(text)
-        relevant = args.get("type", None) in {"Hint", "ItemSend"}
-        if relevant:
+        if args.get("type") in {"Hint", "ItemSend"}:
             item = args["item"]
-            # goes to this world
-            if self.slot_concerns_self(args["receiving"]):
-                relevant = True
-            # found in this world
-            elif self.slot_concerns_self(item.player):
-                relevant = True
-            # not related
-            else:
-                relevant = False
-            if relevant:
-                item = args["item"]
-                msg = self.raw_text_parser(copy.deepcopy(args["data"]))
+            receiving = self.slot_concerns_self(args["receiving"])
+            finding = self.slot_concerns_self(item.player)
+            if (receiving or finding) and (args["type"] == "Hint" or receiving != finding):
+                msg = self.raw_text_parser(data)
                 self._set_message(msg, item.item)
 
     def run_gui(self):
