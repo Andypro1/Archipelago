@@ -3,7 +3,8 @@
 local mesen = emu
 local realSocket = require("socket.core")
 local root, output, backend = TEST_ROOT, TEST_OUTPUT, TEST_BACKEND
-package.path = root .. "/data/lua/?.lua;" .. package.path
+local connectorDirectory = TEST_CONNECTOR:match("^(.+[/\\])")
+package.path = connectorDirectory .. "?.lua;" .. package.path
 local json = require("json")
 local callbacks, receivedColors = {}, {}
 local peer, listener, script
@@ -62,7 +63,13 @@ local function response()
     end
     error("Timed out receiving connector response")
 end
+local ROM_NAME = "LZA069_1_test_seed"
+local function prepare(block)
+    block.protocol, block.game, block.romName = 1, "The Legend of Zelda (Alt)", ROM_NAME
+    return block
+end
 local function exchange(block)
+    prepare(block)
     assert(peer:send(json.encode(block) .. "\n"))
     return response()
 end
@@ -77,7 +84,7 @@ local function test()
                 originalDraw(x, y, text, color, background)
             end,
         }, {__index = mesen})
-        dofile(root .. "/data/lua/connector_tloz_alt.lua")
+        dofile(TEST_CONNECTOR)
         assert(callbacks[mesen.eventType.reset] and callbacks[mesen.eventType.stateLoaded])
         tick()
         assert(receivedColors[0xFF0000], "Mesen red text must be opaque, not transparent")
@@ -102,7 +109,7 @@ local function test()
         gui = {drawText=function() end, drawEllipse=function() end}
         event = {onexit=function(fn) callbacks[mesen.eventType.scriptEnded] = fn end}
         emu = {frameadvance=function() coroutine.yield() end}
-        script = coroutine.create(function() dofile(root .. "/data/lua/connector_tloz_alt.lua") end)
+        script = coroutine.create(function() dofile(TEST_CONNECTOR) end)
         tick()
     end
 
@@ -111,7 +118,34 @@ local function test()
     for address = 0, 0x1FFF do mesen.write(address, 0, mesen.memType.nesSaveRam) end
     local name = "ZeldaAlternateLongPlayerName"
     for i = 0, 31 do mesen.write(0x20 + i, name:byte(i + 1) or 0, mesen.memType.nesPrgRom) end
+    for i = 0, 31 do mesen.write(i, ROM_NAME:byte(i + 1) or 0, mesen.memType.nesPrgRom) end
     connect()
+    -- Validate the exported socket loader from an unrelated working directory without loading a DLL into Mesen.
+    local originalLoadlib = package.loadlib
+    local libraryPath
+    package.loadlib = function(path, symbol)
+        libraryPath = path
+        assert(symbol == "luaopen_socket_core")
+        return function() return realSocket end
+    end
+    dofile(connectorDirectory .. "socket.lua")
+    package.loadlib = originalLoadlib
+    assert(libraryPath:sub(1, #connectorDirectory) == connectorDirectory, "Socket path must be script-relative")
+
+    -- Rejected handshakes must never mutate inventory, even during active gameplay.
+    write(0x12, 5)
+    assert(peer:send(json.encode({items={7100}, protocol=99, game="The Legend of Zelda (Alt)"}) .. "\n"))
+    assert(response().error and ram(0x674) == 0)
+    mesen.write(2, string.byte("Z"), mesen.memType.nesPrgRom)
+    assert(exchange({items={7100}}).error and ram(0x674) == 0, "Native/wrong ROM must not receive items")
+    mesen.write(2, string.byte("A"), mesen.memType.nesPrgRom)
+    assert(peer:send(json.encode({protocol=1, game="The Legend of Zelda (Alt)", items={7100}}) .. "\n"))
+    local hello = response()
+    assert(hello.protocol == 1 and hello.romName == ROM_NAME and ram(0x674) == 0,
+           "First handshake must identify the ROM without granting items")
+    assert(peer:send(json.encode({protocol=1, game="The Legend of Zelda (Alt)", romName="LZA_other", items={7100}}) .. "\n"))
+    assert(response().error and ram(0x674) == 0, "Changed seed must not receive items")
+    write(0x12, 0)
     local block = {items={7123, 7127, 7100, 7130, 7124}, bonusItems={7110},
                    shops={left=0x20, middle=0x04, right=0x10}, messages={test="A message"}}
     local before = exchange(block)
@@ -121,7 +155,7 @@ local function test()
     write(0x505, 0x24)
     write(0x506, 9)
     write(0x680, 0x10); write(0x700, 0x10); write(0x780, 0x10)
-    local wire = json.encode(block) .. "\n"
+    local wire = json.encode(prepare(block)) .. "\n"
     assert(peer:send(wire:sub(1, 19)))
     for _ = 1, 5 do tick() end
     assert(ram(0x677) == 0, "Partial JSON must not grant items")

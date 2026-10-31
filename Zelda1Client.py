@@ -356,6 +356,10 @@ async def main(args):
     global DISPLAY_MSGS
     # A supplied patch determines the variant, including when opened from the alternate launcher entry.
     alt = args.diff_file.lower().endswith(".aptlozalt") if args.diff_file else args.alt
+    if alt:
+        # Preserve existing executable/file associations while the APWorld owns the alternate client.
+        from worlds.tloz_alt.Client import main as alt_main
+        return await alt_main(args)
     ctx = ZeldaContext(args.connect, args.password, alt=alt)
     game_settings = ctx.world_type.settings
     DISPLAY_MSGS = game_settings.display_msgs

@@ -2,9 +2,8 @@
 
 ## Required Software
 
-- This project's Zelda1Client with alternate-world support, the `tloz_alt` world, and `connector_tloz_alt.lua`.
-    - A standalone `.apworld` does not include the updated client or Lua connector. Use this project's application
-      build or run its client from source.
+- Archipelago 0.6.9 or newer and `tloz_alt.apworld`. The APWorld includes the client, emulator connector,
+  Lua libraries, and supported BizHawk LuaSocket binaries; no custom Archipelago build is required.
 - Mesen2 (tested with 2.1.1) or the BizHawk emulator. BizHawk versions 2.3.1 and higher are supported.
     - [BizHawk at TASVideos](https://tasvideos.org/BizHawk)
 - Your legally acquired US v1.0 PRG0 ROM file, probably named `Legend of Zelda, The (U) (PRG0) [!].nes`
@@ -16,7 +15,8 @@
 
 ## Installation Procedures
 
-1. Install this project's application build or prepare its configured Python environment.
+1. Install Archipelago, then use **Install APWorld** in its Launcher to install `tloz_alt.apworld`.
+   Restart the Launcher after installation or an APWorld update.
     - Configure `tloz_alt_options.rom_file` in `host.yaml` with your original ROM path. Native TLoZ uses
       its separate `tloz_options` section; both may reference the same original ROM.
 2. Assign Mesen2 or EmuHawk version 2.3.1 or higher as your default program for launching `.nes` files.
@@ -27,7 +27,7 @@
         2. Check the box next to **Always use this app to open .nes files**.
         3. Scroll to the bottom of the list and click the grey text **Look for another App on this PC**.
         4. Browse for `EmuHawk.exe` located inside your BizHawk folder (from step 1) and click **Open**.
-3. (BizHawk only, EmuHawk version ≤ 2.8) Go to Config > Customize. Switch to the Advanced tab, then switch the Lua Core from "NLua+KopiLua" to
+3. (BizHawk only, EmuHawk version Ã¢â€°Â¤ 2.8) Go to Config > Customize. Switch to the Advanced tab, then switch the Lua Core from "NLua+KopiLua" to
   "Lua+LuaInterface". Then restart EmuHawk. This is required for the Lua script to function correctly.
   **NOTE: Even if "Lua+LuaInterface" is already selected, toggle between the two options and reselect it. Fresh installs** 
   **of newer versions of EmuHawk have a tendency to show "Lua+LuaInterface" as the default selected option but still load** 
@@ -42,7 +42,7 @@ guide: [Basic Multiworld Setup Guide](/tutorial/Archipelago/setup/en)
 
 ### Where do I get a config file?
 
-Use **Generate Template Options** in this project's Launcher and select the generated template for
+Use **Generate Template Options** in the Archipelago Launcher and select the generated template for
 **The Legend of Zelda (Alt)**. Both `game:` and the game-options section must use that exact name. A webhost with
 this world installed also exposes its [Player Options page](/games/The%20Legend%20of%20Zelda%20(Alt)/player-options).
 
@@ -53,7 +53,7 @@ does not acquire the world merely because you installed it locally.
 
 ## Generating a Single-Player Game
 
-1. Put your player YAML in `Players` and use **Generate** in this project's Launcher.
+1. Put your player YAML in `Players` and use **Generate** in the Archipelago Launcher.
 2. Extract your `.aptlozalt` patch from the generated archive and use **Open Patch** in the Launcher.
 3. The client selects the alternate world automatically, creates the ROM, and opens it according to
    `tloz_alt_options.rom_start` in `host.yaml`.
@@ -67,7 +67,7 @@ When you join a multiworld game, you will be asked to provide your config file t
 the host will provide you with either a link to download your patch file, or with a zip file containing everyone's patch
 files. Your patch file should have a `.aptlozalt` extension.
 
-Use **Open Patch** in this project's Launcher. If you installed the Windows file association, you can also double-click
+Use **Open Patch** in the Archipelago Launcher. If you installed the Windows file association, you can also double-click
 the patch. The client creates your ROM in the same directory as the patch.
 
 
@@ -75,8 +75,10 @@ the patch. The client creates your ROM in the same directory as the patch.
 
 Once the Archipelago server has been hosted:
 
-1. Select **Zelda 1 Client (Alt)** in the Launcher, or run `ArchipelagoZelda1Client.exe --alt`.
-   From source, use `python Zelda1Client.py --alt`. Opening a `.aptlozalt` patch selects the alternate world automatically.
+1. Select **Zelda 1 Client (Alt)** in the Launcher. From source, use
+   `python Launcher.py "Zelda 1 Client (Alt)"`. Opening an `.aptlozalt` patch selects this client automatically.
+   The client exports its connector bundle and prints the exact Lua path in its log.
+   **Export Zelda 1 (Alt) Connector** in the Launcher also exports it and opens the containing folder.
 2. Notice the `/connect command` on the server hosting page. (It should look like `/connect archipelago.gg:*****`
    where ***** are numbers)
 3. Type the connect command into the client OR add the port to the pre-populated address on the top bar (it should
@@ -88,8 +90,8 @@ Once the Archipelago server has been hosted:
 
 1. Open your patched `.nes` ROM in Mesen2.
 2. Open Mesen's Script Window and enable script **network access** and **I/O/OS access** in its settings.
-3. Load `data/lua/connector_tloz_alt.lua` from the Archipelago folder and run it. Keep `json.lua` and
-   `lua_5_3_compat.lua` beside it. Mesen supplies its own `socket.core`; it does not use BizHawk's socket DLLs.
+3. Load `connector_tloz_alt.lua` from the exported folder shown by the client and run it.
+   Keep the exported files together. Mesen supplies its own `socket.core`; it does not use BizHawk's socket DLLs.
 4. Start **Zelda 1 Client (Alt)** and connect it to your Archipelago room. Resume emulation if paused; communication
    runs on frame callbacks. The script log reports when the client connects.
 
@@ -100,14 +102,24 @@ reset or loading a save state. Both emulators use port `52980`, so close the oth
 
 1. Open EmuHawk 2.3.1 or higher and load your ROM OR click your ROM file if it is already associated with the
    extension `*.nes`.
-2. Navigate to where you installed Archipelago, then to `data/lua`, and drag+drop the `connector_tloz_alt.lua` script onto
-   the main EmuHawk window.
-    1. You could instead open the Lua Console manually, click `Script` 〉 `Open Script`, and navigate to
+2. Use **Export Zelda 1 (Alt) Connector** in the Launcher, then drag the exported `connector_tloz_alt.lua`
+   onto the main EmuHawk window. Keep its helper scripts and `x64`/`x86` folders beside it.
+    1. You could instead open the Lua Console manually, click `Script` Ã¢Å’Âª `Open Script`, and navigate to
        `connector_tloz_alt.lua` with the file picker.
     2. If it gives a `NLua.Exceptions.LuaScriptException: .\socket.lua:13: module 'socket.core' not found:` exception
        close your emulator entirely, restart it and re-run these steps.
     3. If it says `Must use a version of BizHawk 2.3.1 or higher`, double-check your BizHawk version by clicking **
        Help** -> **About**.
+
+### Updating the connector
+
+After updating the APWorld, restart the client and load the script at the newly printed path. Exports are stored
+under `tloz_alt/connectors/<version>-<content hash>` in Archipelago's writable user folder. Old exports remain
+available, but the client detects incompatible protocol versions. A native TLoZ ROM is rejected before item writes;
+a different seed or slot requires restarting the client. The Lua script must acknowledge the same ROM identity.
+
+Mesen2 uses its bundled socket implementation. The supplied BizHawk binaries cover Windows x64 (Lua 5.1/5.4),
+Windows x86 (Lua 5.1), and Linux x64 (Lua 5.1/5.4). Other platforms require a compatible LuaSocket binary.
 
 ## Play the game
 
@@ -140,6 +152,17 @@ python Launcher.py "Build APWorlds" -- "The Legend of Zelda (Alt)" --skip_open_f
 python setup.py build_exe --yes
 ```
 
-The first command writes `build/apworlds/tloz_alt.apworld`; distribute the updated client and Lua connector with it.
-The second builds the application, including both worlds and both connectors, under `build/exe.<platform>-<python>`.
+The first command writes `build/apworlds/tloz_alt.apworld`. Distribute this file alone; users export the bundled
+connector through the client or Launcher. The second command is optional and builds the entire application.
 The source world is discovered automatically, so packaging is optional for local development.
+
+To export scripts without opening the client UI:
+
+```text
+python Launcher.py "Zelda 1 Client (Alt)" -- --export-connector
+```
+
+Application builds made from this updated source retain `ArchipelagoZelda1Client.exe --alt` and the `.aptlozalt`
+Windows association; they forward to the world-local client. Older custom executables need rebuilding to get that
+forwarding change. Installing the new APWorld alone is sufficient when using the Launcher's **Open Patch** or
+**Zelda 1 Client (Alt)** entry, including on stock installations.

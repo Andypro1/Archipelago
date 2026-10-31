@@ -1,0 +1,3 @@
+!data/lua/x64/*.dll
+!data/lua/x64/*.so
+!data/lua/x86/*.dll

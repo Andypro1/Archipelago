@@ -6,13 +6,14 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import Zelda1Client
 from worlds.LauncherComponents import identify
+from worlds.tloz_alt import Client as AltClient
 
 
 class TestZeldaClient(unittest.IsolatedAsyncioTestCase):
     async def test_authentication_uses_selected_game(self):
         for alt, game in ((False, "The Legend of Zelda"), (True, "The Legend of Zelda (Alt)")):
             with self.subTest(game=game):
-                ctx = Zelda1Client.ZeldaContext(None, None, alt=alt)
+                ctx = AltClient.ZeldaContext(None, None) if alt else Zelda1Client.ZeldaContext(None, None)
                 ctx.auth = "test-rom"
                 ctx.send_msgs = AsyncMock()
                 try:
@@ -34,7 +35,8 @@ class TestZeldaClient(unittest.IsolatedAsyncioTestCase):
                            shutdown=AsyncMock())
                 ctx.exit_event.set()
                 args = Namespace(diff_file=filename, alt=flag, connect=None, password=None)
-                with patch.object(Zelda1Client, "ZeldaContext", return_value=ctx) as context, \
+                with patch.object(AltClient, "main", new_callable=AsyncMock) as alt_main, \
+                        patch.object(Zelda1Client, "ZeldaContext", return_value=ctx) as context, \
                         patch.object(Zelda1Client, "server_loop", new_callable=AsyncMock), \
                         patch.object(Zelda1Client, "nes_sync_task", new_callable=AsyncMock), \
                         patch.object(Zelda1Client, "run_game", new_callable=AsyncMock) as run_game, \
@@ -42,7 +44,12 @@ class TestZeldaClient(unittest.IsolatedAsyncioTestCase):
                         patch.object(Zelda1Client, "DISPLAY_MSGS", True), \
                         patch("Patch.create_rom_file", return_value=({"server": "localhost:38281"}, "test.nes")):
                     await Zelda1Client.main(args)
-                    context.assert_called_once_with(None, None, alt=expected)
+                    if expected:
+                        alt_main.assert_awaited_once_with(args)
+                        context.assert_not_called()
+                        continue
+                    alt_main.assert_not_called()
+                    context.assert_called_once_with(None, None, alt=False)
                     self.assertFalse(Zelda1Client.DISPLAY_MSGS)
                     if filename:
                         run_game.assert_awaited_once_with("test.nes", False)
@@ -53,7 +60,6 @@ class TestZeldaClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(identify("test.aptloz")[1].display_name, "Zelda 1 Client")
         alternate = identify("test.aptlozalt")[1]
         self.assertEqual(alternate.display_name, "Zelda 1 Client (Alt)")
-        with patch("worlds.LauncherComponents.get_exe", return_value=["python", "Zelda1Client.py"]), \
-                patch("worlds.LauncherComponents.launch_exe") as launch:
+        with patch("worlds.tloz_alt.components.launch") as launch:
             alternate.run("test.aptlozalt")
-            launch.assert_called_once_with(["python", "Zelda1Client.py", "--alt", "test.aptlozalt"])
+            launch.assert_called_once_with(AltClient.launch, name="ZeldaAltClient", args=("test.aptlozalt",))

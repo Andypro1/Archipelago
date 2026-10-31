@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 import unittest
 
+from worlds.tloz_alt.connector_resources import export_connector
+
 
 @unittest.skipUnless(os.environ.get("MESEN_EXE") and os.environ.get("TLOZ_TEST_ROM"),
                      "Requires MESEN_EXE and TLOZ_TEST_ROM")
@@ -18,10 +20,12 @@ class TestTlozAltConnector(unittest.TestCase):
                 folder = Path(folder)
                 rom = folder / f"tloz-connector-{folder.name}-{backend}.nes"
                 shutil.copyfile(os.environ["TLOZ_TEST_ROM"], rom)
+                connector = export_connector(folder / "exported connector")
                 output = folder / "result.txt"
                 script = folder / "test.lua"
                 script.write_text(
                     f"TEST_ROOT = {json.dumps(root.as_posix())}\n"
+                    f"TEST_CONNECTOR = {json.dumps(connector.as_posix())}\n"
                     f"TEST_OUTPUT = {json.dumps(output.as_posix())}\n"
                     f"TEST_BACKEND = {json.dumps(backend)}\n"
                     f"dofile({json.dumps((root / 'test/lua/test_tloz_alt.lua').as_posix())})\n",

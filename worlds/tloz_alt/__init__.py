@@ -18,6 +18,7 @@ from .Options import TlozOptions
 from .Rom import TLoZDeltaPatch, get_base_rom_path, first_quest_dungeon_items_early, first_quest_dungeon_items_late
 from .RemoteItem import REMOTE_ITEM_ID, install_remote_item_sprite
 from .Rules import set_rules
+from . import components
 from worlds.AutoWorld import World, WebWorld
 from worlds.generic.Rules import add_rule
 

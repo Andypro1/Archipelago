@@ -1,4 +1,7 @@
---Shamelessly based off the FF1 lua
+-- Zelda (Alt) emulator bridge, originally based on the FF1 connector.
+-- Python handles Archipelago networking; this script owns frame-safe NES memory access.
+local PROTOCOL_VERSION = 1
+local GAME_NAME = "The Legend of Zelda (Alt)"
 
 local isMesen = emu and emu.addEventCallback ~= nil
 -- Mesen does not set the working directory to the script's directory.
@@ -11,6 +14,7 @@ local log = isMesen and emu.log or print
 local u8, wU8, uRange, drawText, drawMessages, itemMessages
 local memDomain = {}
 
+-- Adapt memory domains, drawing, and frame scheduling to the active emulator.
 if isMesen then
     bit = bit or {}
     require("lua_5_3_compat")
@@ -20,6 +24,7 @@ if isMesen then
     memDomain.rom = function() domain = emu.memType.nesPrgRom end
     u8 = function(address) return emu.read(address, domain, false) end
     wU8 = function(address, value) emu.write(address, value, domain) end
+    -- Return the same zero-indexed byte table as BizHawk memory.readbyterange.
     uRange = function(address, length)
         local bytes = {}
         for i = 0, length - 1 do bytes[i] = u8(address + i) end
@@ -31,6 +36,7 @@ if isMesen then
         emu.drawString(x, y, message, color, 0x4F000000)
     end
     itemMessages = {}
+    -- Wrap overlays to the NES screen and age them one frame at a time.
     drawMessages = function()
         local y = 10
         for _, message in pairs(itemMessages) do
@@ -55,6 +61,7 @@ else
     memDomain.rom = function() memory.usememorydomain("PRG ROM") end
 end
 
+-- Draw the connection indicator using the active emulator's graphics API.
 local function drawStatus(color)
     if isMesen then
         emu.drawRectangle(248, 9, 6, 6, color % 0x1000000, true)
@@ -62,6 +69,7 @@ local function drawStatus(color)
         gui.drawEllipse(248, 9, 6, 6, "Black", color)
     end
 end
+-- Connection progress affects only the status indicator; the handshake gates memory writes.
 local STATE_OK = "Ok"
 local STATE_TENTATIVELY_CONNECTED = "Tentatively Connected"
 local STATE_INITIAL_CONNECTION_MADE = "Initial Connection Made"
@@ -91,6 +99,7 @@ local shieldShopBit         = 0x20
 local takeAnyCaveBit        = 0x01
 
 
+-- NES RAM addresses, including the item counters reserved by the Archipelago base patch.
 local sword                 = 0x0657
 local bombs                 = 0x0658
 local maxBombs              = 0x067C
@@ -124,6 +133,7 @@ local localTriforce         = 0x0679
 local bonusItemsObtained    = 0x067A
 local itemsObtainedHigh     = 0x067B
 
+-- Stable Archipelago item IDs shared with this world's Items.py.
 itemAPids = {
     ["Boomerang"] = 7100,
     ["Bow"] = 7101,
@@ -167,94 +177,107 @@ for key, value in pairs(itemAPids) do
     itemIDNames[value] = key
 end
 
+-- Read the saved 16-bit delivery index used to avoid granting an item twice.
 local function getItemsObtained()
     memDomain.ram()
     return bit.bor(bit.lshift(u8(itemsObtainedHigh), 8), u8(itemsObtained))
 end
 
+-- Store the delivery index in its two reserved RAM bytes.
 local function setItemsObtained(value)
     memDomain.ram()
     wU8(itemsObtainedHigh, bit.rshift(value, 8))
     wU8(itemsObtained, bit.band(value, 0xFF))
 end
 
-local function determineItem(array)
-    memdomain.ram()
-    currentItemsObtained = getItemsObtained()
-    
-end
-
+-- Grant the wooden sword without downgrading an existing upgrade.
 local function gotSword()
     local currentSword = u8(sword)
     wU8(sword, math.max(currentSword, 1))
 end
 
+-- Grant at least the white sword tier.
 local function gotWhiteSword()
     local currentSword = u8(sword)
     wU8(sword, math.max(currentSword, 2))
 end
 
+-- Grant the highest sword tier.
 local function gotMagicalSword()
     wU8(sword, 3)
 end
 
+-- Add four bombs, capped at the current bomb capacity.
 local function gotBomb()
     local currentBombs = u8(bombs)
     local currentMaxBombs = u8(maxBombs)
     wU8(bombs, math.min(currentBombs + 4, currentMaxBombs))
 end
 
+-- Grant arrows without replacing silver arrows.
 local function gotArrow()
     local currentArrow = u8(arrow)
     wU8(arrow, math.max(currentArrow, 1))
 end
 
+-- Upgrade arrows to silver.
 local function gotSilverArrow()
     wU8(arrow, 2)
 end
 
+-- Enable the bow inventory flag.
 local function gotBow()
     wU8(bow, 1)
 end
 
+-- Grant the blue candle without replacing the red candle.
 local function gotCandle()
     local currentCandle = u8(candle)
     wU8(candle, math.max(currentCandle, 1))
 end
 
+-- Upgrade the candle to red.
 local function gotRedCandle()
     wU8(candle, 2)
 end
 
+-- Enable the recorder inventory flag.
 local function gotRecorder()
     wU8(recorder, 1)
 end
 
+-- Give Link bait.
 local function gotFood()
     wU8(food, 1)
 end
 
+-- Give one potion dose without reducing an existing red potion.
 local function gotWaterOfLifeBlue()
     local currentWaterOfLife = u8(waterOfLife)
     wU8(waterOfLife, math.max(currentWaterOfLife, 1))
 end
 
+-- Give a full two-dose potion.
 local function gotWaterOfLifeRed()
     wU8(waterOfLife, 2)
 end
 
+-- Enable the magical rod inventory flag.
 local function gotMagicalRod()
     wU8(magicalRod, 1)
 end
 
+-- Enable the book upgrade for the magical rod.
 local function gotBookOfMagic()
     wU8(bookOfMagic, 1)
 end
 
+-- Enable the raft inventory flag.
 local function gotRaft()
     wU8(raft, 1)
 end
 
+-- Grant at least the blue ring and update the tunic palette in save RAM.
 local function gotBlueRing()
     local currentRing = u8(ring)
     wU8(ring, math.max(currentRing, 1))
@@ -266,6 +289,7 @@ local function gotBlueRing()
     end
 end
 
+-- Grant the red ring and update both tunic palette copies in save RAM.
 local function gotRedRing()
     wU8(ring, 2)
     memDomain.saveram()
@@ -273,22 +297,27 @@ local function gotRedRing()
     wU8(0x0804, 0x16)
 end
 
+-- Enable the stepladder inventory flag.
 local function gotStepladder()
     wU8(stepladder, 1)
 end
 
+-- Enable unlimited keys through the magical key flag.
 local function gotMagicalKey()
     wU8(magicalKey, 1)
 end
 
+-- Enable the power bracelet inventory flag.
 local function gotPowerBracelet()
     wU8(powerBracelet, 1)
 end
 
+-- Enable the letter inventory flag.
 local function gotLetter()
     wU8(letter, 1)
 end
 
+-- Increase the packed health capacity/current-health byte, subject to its cap.
 local function gotHeartContainer()
     local currentHeartContainers = bit.rshift(bit.band(u8(heartContainers), 0xF0), 4)
     if currentHeartContainers < 16 then
@@ -298,24 +327,29 @@ local function gotHeartContainer()
     end
 end
 
+-- Increment the base patch's local Triforce count; the display is updated separately.
 local function gotTriforceFragment()
     local triforceByte = 0xFF
     local newTriforceCount = u8(localTriforce) + 1
     wU8(localTriforce, newTriforceCount)
 end
 
+-- Enable the wooden boomerang inventory flag.
 local function gotBoomerang()
     wU8(boomerang, 1)
 end
 
+-- Enable the magical boomerang inventory flag.
 local function gotMagicalBoomerang()
     wU8(magicalBoomerang, 1)
 end
 
+-- Enable the magical shield inventory flag.
 local function gotMagicalShield()
     wU8(magicalShield, 1)
 end
 
+-- Restore one heart, or fill the partial-heart byte when already at capacity.
 local function gotRecoveryHeart()
     local currentHearts = bit.band(u8(heartContainers), 0x0F)
     local currentHeartContainers = bit.rshift(bit.band(u8(heartContainers), 0xF0), 4)
@@ -328,6 +362,7 @@ local function gotRecoveryHeart()
     wU8(heartContainers, currentHearts)
 end
 
+-- Restore up to three hearts without exceeding capacity.
 local function gotFairy()
     local currentHearts = bit.band(u8(heartContainers), 0x0F)
     local currentHeartContainers = bit.rshift(bit.band(u8(heartContainers), 0xF0), 4)
@@ -344,19 +379,23 @@ local function gotFairy()
     wU8(heartContainers, currentHearts)
 end
 
+-- Activate the room's clock effect.
 local function gotClock()
     wU8(clockItem, 1)
 end
 
+-- Queue five rupees through the game's normal rupee animation counter.
 local function gotFiveRupees()
     local currentRupeesToAdd = u8(rupeesToAdd)
     wU8(rupeesToAdd, math.min(currentRupeesToAdd + 5, 255))
 end
 
+-- Add one small key, capped at nine.
 local function gotSmallKey()
     wU8(keys, math.min(u8(keys) + 1, 9))
 end
 
+-- Apply one delivery and advance the saved index; restore RAM after palette writes.
 local function gotItem(item)
     -- Grant the inventory bits only. Do not write itemToLift ($0505) or
     -- itemLiftTimer ($0506): that slot is the live room item, so the old
@@ -404,12 +443,14 @@ local function gotItem(item)
 end
 
 
+-- Allow inventory and shop writes only during active gameplay, not menus or transitions.
 local function StateOKForMainLoop()
     memDomain.ram()
     local gameMode = u8(0x12) 
     return gameMode == 5 
 end
 
+-- Report the base patch's shop-slot bitfields and Take Any cave count.
 local function checkCaveItemObtained()
     memDomain.ram() 
     local returnTable = {}
@@ -420,6 +461,7 @@ local function checkCaveItemObtained()
     return returnTable
 end
 
+-- Return overworld room flags as a one-indexed JSON array.
 function generateOverworldLocationChecked()
     memDomain.ram()
     data = uRange(0x067E, 0x81)
@@ -427,18 +469,21 @@ function generateOverworldLocationChecked()
     return data
 end
 
+-- Read the ROM's movable ocean-heart location for Infinite Hyrule compatibility.
 function getHCLocation()
     memDomain.rom()
     data = u8(0x1789A)
     return data
 end
 
+-- Read the ROM's movable Armos pickup location.
 function getPBLocation()
     memDomain.rom()
     data = u8(0x10CB2)
     return data
 end
 
+-- Report the first dungeon room-flag bank for location checks.
 function generateUnderworld16LocationChecked()
     memDomain.ram()
     data = uRange(0x06FE, 0x81)
@@ -446,6 +491,7 @@ function generateUnderworld16LocationChecked()
     return data
 end
 
+-- Report the second dungeon room-flag bank for location checks.
 function generateUnderworld79LocationChecked()
     memDomain.ram()
     data = uRange(0x077E, 0x81)
@@ -453,6 +499,7 @@ function generateUnderworld79LocationChecked()
     return data
 end
 
+-- Convert the delivered fragment count to the game's eight-piece display bitmask.
 function updateTriforceFragments()
     memDomain.ram()
     local triforceByte = 0xFF
@@ -461,6 +508,7 @@ function updateTriforceFragments()
     wU8(triforceFragments, currentPieces)
 end
 
+-- Apply messages and new deliveries from a validated client, preserving saved delivery counts.
 function processBlock(block)
     if block ~= nil then
         local msgBlock = block['messages']
@@ -513,6 +561,7 @@ local server
 local incoming, outgoing = "", ""
 local sendIndex = 1
 
+-- Drop the current peer and discard partial messages so a reconnect starts cleanly.
 local function disconnect(reason)
     if zeldaSocket then zeldaSocket:close() end
     zeldaSocket = nil
@@ -522,11 +571,13 @@ local function disconnect(reason)
     if reason then log(reason) end
 end
 
+-- Release both accepted and listening sockets when the script stops.
 local function closeSockets()
     disconnect()
     if server then server:close(); server = nil end
 end
 
+-- Resume a partial nonblocking write without duplicating bytes or pausing emulation.
 local function sendResponse()
     local sent, err, last = zeldaSocket:send(outgoing, sendIndex)
     sendIndex = (sent or last or (sendIndex - 1)) + 1
@@ -542,6 +593,7 @@ local function sendResponse()
     end
 end
 
+-- Read one complete JSON line, validate the handshake, and return a memory snapshot.
 local function receive()
     if outgoing ~= "" then sendResponse(); return end
     -- Preserve partial lines across nonblocking reads.
@@ -554,29 +606,44 @@ local function receive()
     incoming = ""
     local ok, block = pcall(json.decode, line)
     if not ok or type(block) ~= "table" then disconnect("Invalid client JSON"); return end
-    processBlock(block)
-
-    -- PRG ROM excludes the iNES header. Read all 32 bytes of the player name.
+    -- PRG ROM excludes the iNES header: the LZA seed identifier starts at offset zero.
     memDomain.rom()
+    local romName = ""
+    for address = 0, 31 do
+        local value = u8(address)
+        if value == 0 then break end
+        romName = romName .. string.char(value)
+    end
     local playerName = uRange(0x1F, 0x21)
     playerName[0] = nil
-    local retTable = {playerName=playerName}
-    if StateOKForMainLoop() then
-        retTable.overworld = generateOverworldLocationChecked()
-        retTable.underworld1 = generateUnderworld16LocationChecked()
-        retTable.underworld2 = generateUnderworld79LocationChecked()
+    local retTable = {protocol=PROTOCOL_VERSION, game=GAME_NAME, romName=romName, playerName=playerName}
+    if block.protocol ~= PROTOCOL_VERSION or block.game ~= GAME_NAME then
+        retTable.error = "Incompatible Zelda (Alt) client. Update the APWorld and load its exported connector."
+    elseif romName:sub(1, 3) ~= "LZA" then
+        retTable.error = "Load a patched The Legend of Zelda (Alt) ROM."
+    elseif block.romName ~= nil and block.romName ~= romName then
+        retTable.error = "The ROM changed. Restart the Zelda (Alt) client before sending items."
+    else
+        -- The first exchange only identifies the ROM; subsequent requests acknowledge that identity.
+        if block.romName == romName then processBlock(block) end
+        if StateOKForMainLoop() then
+            retTable.overworld = generateOverworldLocationChecked()
+            retTable.underworld1 = generateUnderworld16LocationChecked()
+            retTable.underworld2 = generateUnderworld79LocationChecked()
+        end
+        retTable.caves = checkCaveItemObtained()
+        memDomain.ram()
+        if gameMode ~= 19 then gameMode = u8(0x12) end
+        retTable.gameMode = gameMode
+        retTable.overworldHC = getHCLocation()
+        retTable.overworldPB = getPBLocation()
+        retTable.itemsObtained = getItemsObtained()
     end
-    retTable.caves = checkCaveItemObtained()
-    memDomain.ram()
-    if gameMode ~= 19 then gameMode = u8(0x12) end
-    retTable.gameMode = gameMode
-    retTable.overworldHC = getHCLocation()
-    retTable.overworldPB = getPBLocation()
-    retTable.itemsObtained = getItemsObtained()
     outgoing = json.encode(retTable) .. "\n"
     sendResponse()
 end
 
+-- Advance overlays and service the connection once per emulator frame.
 local function tick()
     frame = frame + 1
     drawMessages()
@@ -608,6 +675,7 @@ local bound, bindError = server:bind("127.0.0.1", 52980)
 if bound then bound, bindError = server:listen(1) end
 if not bound then closeSockets(); error("Cannot listen on port 52980: " .. tostring(bindError)) end
 
+-- Mesen runs callbacks; BizHawk yields from its Lua loop. Both clean up sockets on exit.
 if isMesen then
     emu.addEventCallback(tick, emu.eventType.endFrame)
     emu.addEventCallback(closeSockets, emu.eventType.scriptEnded)

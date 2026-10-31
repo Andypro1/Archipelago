@@ -150,6 +150,9 @@ ipython_config.py
 # SageMath parsed files
 *.sage.py
 
+# Exported Zelda (Alt) connector bundles
+/tloz_alt/
+
 # Environments
 .env
 .venv*

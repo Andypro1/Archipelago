@@ -2,7 +2,8 @@
 
 This alternate implementation can be installed alongside The Legend of Zelda. Select **The Legend of Zelda (Alt)**
 when generating options. It uses `.aptlozalt` patches, the **Zelda 1 Client (Alt)** launcher entry, and
-`connector_tloz_alt.lua` in Mesen2 or BizHawk.
+`connector_tloz_alt.lua` in Mesen2 or BizHawk. The APWorld bundles the client and connector;
+use **Export Zelda 1 (Alt) Connector** in the Launcher to get the emulator script.
 
 ## Where is the options page?
 
@@ -50,7 +51,7 @@ that level's palette, the same way a Rupee would.
 
 ## Local Unique Commands
 
-The following commands are only available when using the Zelda1Client to play with Archipelago.
+The following commands are available in the bundled **Zelda 1 Client (Alt)**:
 
 - `/nes` Check NES Connection State
-- `/toggle_msgs` Toggle displaying messages in EmuHawk
+- `/toggle_msgs` Toggle displaying messages in the emulator
